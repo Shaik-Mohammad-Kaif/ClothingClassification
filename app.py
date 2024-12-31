@@ -1,29 +1,31 @@
 from flask import Flask, request, jsonify, render_template
 import os
 import numpy as np
-import json
+import tensorflow as tf
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
+import json
 
-# Disable GPU to avoid cuDNN/cuBLAS issues
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+# Check if GPU is available and set memory growth to avoid TensorFlow using all GPU memory
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        tf.config.experimental.set_memory_growth(gpus[0], True)
+    except RuntimeError as e:
+        print(e)
 
 # Define the Recognize_Item class
 class Recognize_Item:
-    def __init__(self, model_path=None):
-        # Use a relative path for the model
-        if model_path is None:
-            self.model_path = os.path.join(os.getcwd(), 'data', 'consolidated_model.h5')
-        else:
-            self.model_path = model_path
+    def __init__(self, model_path='models/consolidated_model.h5'):
+        self.model_path = model_path
         self.model = self.load_model()
 
     def load_model(self):
         try:
             item_reco_model = load_model(self.model_path)
             return item_reco_model
-        except Exception:
-            raise Exception('#-----Failed to load model file-----#')
+        except Exception as e:
+            raise Exception(f'#-----Failed to load model file-----# Error: {str(e)}')
 
     def process_img(self, image_path):
         img = image.load_img(image_path, color_mode='rgb', target_size=(112, 112, 3))
@@ -31,8 +33,7 @@ class Recognize_Item:
         return x / 255.0
 
     def class_map(self, e):
-        label_map_path = os.path.join(os.getcwd(), 'data', 'label_map.json')
-        label_map = json.load(open(label_map_path))
+        label_map = json.load(open('models/label_map.json'))  # Make sure label_map.json is in the models folder
         gender = label_map['gen_names'][e[0]]
         subCategory = label_map['sub_names'][e[1]]
         articleType = label_map['art_names'][e[2]]
@@ -85,5 +86,11 @@ def index():
     return render_template('index.html')
 
 if __name__ == '__main__':
+    # Set TensorFlow logging level to suppress info and warnings
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow info logs
+
+    # Get the PORT from environment variable (for Render or Heroku)
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+
+    # Run the Flask app on the dynamically assigned port
+    app.run(debug=True, host="0.0.0.0", port=port)
